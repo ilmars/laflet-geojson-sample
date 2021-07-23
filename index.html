@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+	<title>
+		Leaflet piemērs GEOJSON datu attēlošanai
+	</title>
+
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+	<link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"
+		integrity="sha512-xodZBNTC5n17Xt2atTPuE1HxjVMSvLVW9ocqUKLsCC5CXdbqCmblAshOMAS6/keqq/sMZMZ19scR4PsZChSR7A=="
+		crossorigin="" />
+	<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"
+		integrity="sha512-XQoYMqMTK8LvdxXYG3nZ448hOEQiglfqkJs1NOQV44cWnUrBc8PkAOcXy20w0vlaXaVUearIOBhiXZ5V3ynxwA=="
+		crossorigin=""></script>
+	<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.17/d3.min.js"></script> -->
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/6.7.0/d3.min.js"></script>
+
+
+	<style>
+		html,
+		body {
+			height: 100%;
+			margin: 0;
+		}
+		#map {
+			width: 100%;
+			height: 100%;
+		}
+	</style>
+</head>
+<body>
+
+	<div id='map'></div>
+	<script src="data/sample-data.js" type="text/javascript"></script>
+	<script>
+		var map = L.map('map').setView([57.1151, 24.2401], 13);
+		// console.log(sampleData, sampleData.length)
+
+		L.tileLayer('https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw', {
+			maxZoom: 18,
+			attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, ' +
+				'Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
+			id: 'mapbox/light-v9',
+			tileSize: 512,
+			zoomOffset: -1
+		}).addTo(map);
+
+		var geoJsonArrays = calculate_df_coord()
+		var poligons = geoJsonArrays["poligon"];
+		var lines = geoJsonArrays["line"];
+		var points = geoJsonArrays["point"];
+		var timeStamp = geoJsonArrays["timeStamp"];
+		var lineOpacity = 0.4;
+		var fillopc = 0.1;
+		var DfObject = Array();
+
+		minTime = Math.min.apply(null, sampleData.map(function (item) {
+			return item.EventTimeStamp;
+		}));
+		maxTime = Math.max.apply(null, sampleData.map(function (item) {
+			return item.EventTimeStamp;
+		}));
+		var opacityScale = d3.scaleLinear().domain([minTime ,maxTime]).range([0.001,0.4])
+
+		var DFline = {
+			"type": "Feature", "properties": {
+				"style": { weight: 0.5, color: "#f00", opacity: lineOpacity }
+			},
+			"geometry": { "type": "MultiPolygon", "coordinates": lines }
+		};
+		DfObject.push(DFline)
+
+		var DFpoint = {
+			"type": "Feature", "properties": {
+				"style": { radius: 5, fillColor: "#ff7800", color: "#000", weight: 1, opacity: 0.2, fillOpacity: 0.6 }
+			},
+			"geometry": { "type": "MultiPoint", "coordinates": points }
+		};
+		DfObject.push(DFpoint)
+
+		poligons.forEach((entry, i) => {
+			var DFsector = {
+				"type": "Feature",
+				"properties": {
+					"style": {
+						weight: 0.5,
+						color: "#00f",
+						opacity: lineOpacity,
+						fillColor: "#00f",
+						fillOpacity: opacityScale(timeStamp[i])
+					}
+				},
+				"geometry": { "type": "Polygon", "coordinates": entry }
+			};
+			DfObject.push(DFsector)
+		});
+
+		L.geoJSON(DfObject, {
+			style: function (feature) {
+				return feature.properties && feature.properties.style;
+			},
+			pointToLayer: function (feature, latlng) {
+				// marker color can be colorcodec by signal level
+				// https://observablehq.com/@d3/color-legend?collection=@d3/d3-scale
+				return L.circleMarker(latlng, {
+					radius: 30,
+					fillColor: "#ffee00",
+					color: "#000",
+					weight: 1,
+					opacity: 0.5,
+					fillOpacity: 0.6
+				});
+			}
+		}).addTo(map);
+
+		function calculate_df_coord() {
+			var pointCount = sampleData.length
+			var newPoligon = new Array(), newLine = new Array(), newPoint = new Array(), newTimestamp= new Array(), point = new Array(), responce = new Array();
+			var i = 0;
+			while (i < sampleData.length) {
+
+				var SensorLatitude = sampleData[i].SensorLatitude;
+				var SensorLongitude = sampleData[i].SensorLongitude;
+				var DirectionAngle = sampleData[i].DirectionAngle;
+				var ErrorRate = sampleData[i].ErrorRate;
+				var EventTimeStamp = sampleData[i].EventTimeStamp;
+				var distance = sampleData[i].EffectiveRange / 1e3;
+
+				if (SensorLatitude != '' && SensorLongitude != '' && DirectionAngle != '' && ErrorRate != '') {
+					newPoligon.push(create_poligon(SensorLatitude, SensorLongitude, DirectionAngle, ErrorRate, distance, 'poligon'));
+					newLine.push(create_poligon(SensorLatitude, SensorLongitude, DirectionAngle, ErrorRate, distance, 'line'));
+					point = [parseFloat(SensorLongitude), parseFloat(SensorLatitude)];
+					newPoint.push(point);
+					newTimestamp.push(EventTimeStamp);
+				} else { }
+
+				i++;
+			}
+			responce = { poligon: newPoligon, line: newLine, point: newPoint, timeStamp: newTimestamp }
+			return responce;
+		}
+		function create_poligon(lat_d, lon_d, ang_d, er, distance, type) {
+			//in: lat, lon, ang, error. all values in degres
+			var D, r, lat, lon, ang1, ang2, latPr = new Array(), latP = new Array(), lonPr = new Array(), lonP = new Array(), responce = new Array(), results = new Array(), point = new Array(), line = new Array(), poligons = new Array();
+
+			// console.log(lat_d, lon_d, ang_d, er, type)
+			D = distance;
+			r = 6375;
+			//convert all to radians;
+			lat = lat_d * Math.PI / 180;
+			lon = lon_d * Math.PI / 180;
+
+			ang0 = ang_d * Math.PI / 180;
+			ang1 = (ang_d - er) * Math.PI / 180;
+			ang2 = (1 * ang_d + 1 * (er)) * Math.PI / 180;
+			responce[0] = [parseFloat(lon_d), parseFloat(lat_d)];
+
+			if (type == 'poligon') {
+
+				latPr[1] = Math.asin(Math.sin(lat) * Math.cos(D / r) + Math.cos(lat) * Math.sin(D / r) * Math.cos(ang1));//radians
+				lonPr[1] = lon + Math.asin((Math.sin(ang1) * Math.sin(D / r)) / Math.cos(latPr[1]));//radians
+				latP[1] = latPr[1] / Math.PI * 180;//degree
+				lonP[1] = lonPr[1] / Math.PI * 180;//degree
+				//responce[1] = [latP[1], lonP[1]];
+				responce[1] = [lonP[1], latP[1]];
+
+
+
+				latPr[2] = Math.asin(Math.sin(lat) * Math.cos(D / r) + Math.cos(lat) * Math.sin(D / r) * Math.cos(ang0));//radians
+				lonPr[2] = lon + Math.asin((Math.sin(ang0) * Math.sin(D / r)) / Math.cos(latPr[2]));//radians
+				latP[2] = latPr[2] / Math.PI * 180;//degree
+				lonP[2] = lonPr[2] / Math.PI * 180;//degree
+				responce[2] = [lonP[2], latP[2]];
+
+				latPr[3] = Math.asin(Math.sin(lat) * Math.cos(D / r) + Math.cos(lat) * Math.sin(D / r) * Math.cos(ang2));//radians
+				lonPr[3] = lon + Math.asin((Math.sin(ang2) * Math.sin(D / r)) / Math.cos(latPr[3]));//radians
+				latP[3] = latPr[3] / Math.PI * 180;//degree
+				lonP[3] = lonPr[3] / Math.PI * 180;//degree
+				//responce[3] = [latP[3], lonP[3]];
+				responce[3] = [lonP[3], latP[3]];
+
+				responce[4] = responce[0];
+				poligons.push(responce);
+				return poligons;
+			} else if (type == 'line') {
+
+				latPr[1] = Math.asin(Math.sin(lat) * Math.cos(D / r) + Math.cos(lat) * Math.sin(D / r) * Math.cos(ang0));//radians
+				lonPr[1] = lon + Math.asin((Math.sin(ang0) * Math.sin(D / r)) / Math.cos(latPr[1]));//radians
+				latP[1] = latPr[1] / Math.PI * 180;//degree
+				lonP[1] = lonPr[1] / Math.PI * 180;//degree
+				responce[1] = [lonP[1], latP[1]];
+				line.push(responce);
+				//line.push(responce);
+				return line;
+			}
+		}
+	</script>
+</body>
+</html>
